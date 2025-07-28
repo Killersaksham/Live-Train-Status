@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Indian Rail Status</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/awesomplete/1.1.5/awesomplete.min.css" />
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+        body { font-family: 'Roboto', sans-serif; background-color: #f3f4f6; }
+        .card { background-color: white; border-radius: 0.75rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); padding: 1.5rem; }
+        .header-text { color: #2563eb; }
+        .input-section { background: linear-gradient(135deg, #60a5fa, #3b82f6); }
+        .check-status-btn { background-color: #2563eb; transition: background-color 0.2s; }
+        .check-status-btn:hover { background-color: #1d4ed8; }
+        .error-message { background-color: #fee2e2; color: #b91c1c; padding: 1rem; border-radius: 8px; border: 1px solid #ef4444; margin-top: 1.5rem; text-align: center; }
+        .route-list::before { content: ''; position: absolute; left: 11px; top: 1rem; bottom: 1rem; width: 4px; background-color: #e5e7eb; border-radius: 2px; }
+        .route-station { position: relative; padding-left: 2.5rem; }
+        .route-station::before { content: ''; position: absolute; left: 4px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; background-color: #fff; border: 4px solid #d1d5db; border-radius: 50%; z-index: 2; }
+        .route-station.completed::before { border-color: #2563eb; }
+        .route-station.next-stop .station-name { color: #16a34a; font-weight: bold; }
+        .route-station.next-stop::before { border-color: #16a34a; background-color: #16a34a; }
+        #train-emoji { position: absolute; left: 0px; font-size: 24px; z-index: 3; transition: top 0.5s ease-in-out; transform: translateY(-50%); }
+
+        /* --- UPDATED: Styles for Awesomplete dropdown --- */
+        div.awesomplete {
+            width: 100%; /* Ensure the component wrapper takes full width */
+        }
+
+        .awesomplete > ul {
+            /* Positioning and Layout */
+            position: absolute;
+            left: 0;
+            right: 0;
+            z-index: 99;
+            margin-top: 0.5rem;
+
+            /* Appearance */
+            border-radius: 0.375rem;
+            border: 1px solid #d1d5db;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            background: #fff;
+            color: #1f2937;
+            text-align: left;
+        }
+
+        .awesomplete > ul > li {
+            /* Spacing and Text handling */
+            padding: 0.5rem 0.75rem;
+            white-space: normal; /* Allow text to wrap */
+            cursor: pointer;
+        }
+
+        .awesomplete > ul > li[aria-selected="true"] {
+            background: #60a5fa;
+            color: white;
+        }
+
+        /* Highlight matching text */
+        .awesomplete mark {
+            background: #fde047; /* yellow-300 */
+            padding: 0.125rem 0;
+            border-radius: 2px;
+        }
+        .awesomplete > ul > li[aria-selected="true"] mark {
+            background: #facc15; /* yellow-400 */
+            color: #1f2937;
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <div class="container max-w-4xl mx-auto p-4 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="header-text text-4xl font-bold">Live Train Status</h1>
+            <p class="text-gray-600 mt-2">Track Indian Railways trains in real-time with ease.</p>
+        </header>
+
+        <section class="input-section card text-white p-6 mb-8">
+            <form method="POST" action="/" class="w-full">
+                <div class="flex flex-col md:flex-row items-center gap-4">
+
+                    <div class="w-full md:w-1/3 relative">
+                        <input type="text" id="train-search" class="awesomplete w-full text-center text-gray-800 border border-gray-300 rounded-md p-3 text-lg" placeholder="Train Name or No." autocomplete="off" value="{{ train_number_input }}">
+                        <input type="hidden" name="train_number" id="train-number-hidden">
+                    </div>
+
+                    <div class="flex-grow flex items-center justify-center gap-x-6 text-lg">
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="start_day" value="0" class="h-4 w-4" {% if selected_day == '0' or not selected_day %}checked{% endif %}> Today</label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="start_day" value="1" class="h-4 w-4" {% if selected_day == '1' %}checked{% endif %}> Yesterday</label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="start_day" value="2" class="h-4 w-4" {% if selected_day == '2' %}checked{% endif %}> Day Before</label>
+                    </div>
+                    <button type="submit" class="check-status-btn w-full md:w-auto text-white font-bold py-3 px-8 rounded-md shadow-lg">Track Train</button>
+                </div>
+            </form>
+        </section>
+
+        {% if error_message %}
+            <div class="error-message">{{ error_message }}</div>
+        {% endif %}
+
+        {% if train_data %}
+            <section class="results-section space-y-6">
+                <header class="text-center">
+                    <h2 class="text-2xl font-bold">{{ train_data.trainName }} ({{ train_data.trainNumber }})</h2>
+                    <p class="text-gray-600">{{ train_data.currentStatus.fromStation }} → {{ train_data.currentStatus.toStation }}</p>
+                </header>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="flex flex-col gap-6">
+                        <div class="card">
+                            <h3 class="text-lg font-bold text-gray-800 mb-3">Current Status</h3>
+                            <p class="text-gray-600 py-1"><span class="font-medium text-gray-800">Last Update:</span> {{ train_data.currentStatus.lastUpdate }}</p>
+                            <p class="text-gray-600 py-1"><span class="font-medium text-gray-800">Last Crossed:</span> <span class="font-bold text-blue-600">{{ train_data.currentStatus.lastCrossedStation }}</span></p>
+                            <p class="text-gray-600 py-1"><span class="font-medium text-gray-800">Current Speed:</span> <span class="font-bold text-blue-600">{{ train_data.currentStatus.speed }}</span></p>
+                            <p class="text-gray-600 py-1"><span class="font-medium text-gray-800">Current Delay:</span> <span class="font-bold text-blue-600">{{ train_data.currentStatus.currentDelay }}</span></p>
+                        </div>
+                        <div class="card">
+                            <h3 class="text-lg font-bold text-gray-800 mb-3">Next Stop</h3>
+                            <p class="text-gray-600 py-1"><span class="font-medium text-gray-800">Station:</span> <span class="font-bold text-green-600">{{ train_data.nextStop.stationName }}</span></p>
+                            <p class="text-gray-600 py-1"><span class="font-medium text-gray-800">Expected Arrival:</span> {{ train_data.nextStop.expectedArrival }}</p>
+                            <p class="text-gray-600 py-1"><span class="font-medium text-gray-800">Expected Delay:</span> {{ train_data.nextStop.expectedDelay }}</p>
+                            <p class="text-gray-600 py-1"><span class="font-medium text-gray-800">Platform:</span> {{ train_data.nextStop.expectedPlatform }}</p>
+                            <p class="text-gray-600 py-1"><span class="font-medium text-gray-800">Distance:</span> {{ train_data.nextStop.distanceToGo }}</p>
+                        </div>
+                         <div class="card">
+                            <h3 class="text-lg font-bold text-gray-800 mb-3">Journey Progress</h3>
+                            <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                <div id="journeyProgressBar" class="bg-green-500 h-2.5 rounded-full" style="width: {{ train_data.journeyProgress | default(0) | round }}%"></div>
+                            </div>
+                            <p id="progressText" class="text-center text-sm text-gray-600 mt-2">
+                                {{ train_data.journeyProgress | default(0) | round }}% Completed
+                            </p>
+                        </div>
+                        <div class="card">
+                            <h3 class="text-lg font-bold text-gray-800 mb-3">Additional Info</h3>
+                            <p class="text-gray-600"><span class="font-medium text-gray-800">Runs On:</span> {{ train_data.daysOfRun | join(', ') }}</p>
+                            <p class="text-gray-600"><span class="font-medium text-gray-800">Train Type:</span> {{ train_data.trainType }}</p>
+                            <p class="text-gray-600"><span class="font-medium text-gray-800">Pantry Car:</span> {{ train_data.pantryCar }}</p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3 class="text-lg font-bold text-gray-800 mb-4">Live Route</h3>
+                        <div class="relative max-h-[48rem] overflow-y-auto pr-2">
+                            <ul class="route-list" id="route-list-diagram">
+                                {% for stop in train_data.fullRoute %}
+                                <li class="route-station py-2" id="diagram-station-{{ loop.index0 }}">
+                                    <div class="flex justify-between items-baseline">
+                                        <span class="station-name font-medium">{{ stop.station }}</span>
+                                        <span class="text-xs text-gray-500">{{ stop.distance }} | {{ stop.platform }}</span>
+                                    </div>
+                                    <div class="text-sm text-gray-500">Sch: {{ stop.scheduled_eta }}</div>
+                                    {% if stop.delayMin and stop.delayMin > 0 %}
+                                        <div class="text-sm text-red-500 font-bold">Exp: {{ stop.expected_eta }}</div>
+                                    {% endif %}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                <div class="card mt-6">
+                    <h3 class="text-lg font-bold text-gray-800 mb-3">Full Route Details</h3>
+                    <div class="overflow-x-auto mt-4">
+                        <table class="w-full text-sm text-left border-collapse">
+                            <thead class="bg-blue-100 text-blue-800">
+                                <tr>
+                                    <th class="p-2 border">#</th><th class="p-2 border">Station</th><th class="p-2 border">Distance</th><th class="p-2 border">Arrival</th><th class="p-2 border">Departure</th><th class="p-2 border">Delay</th><th class="p-2 border">Platform</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for stop in train_data.fullRoute %}
+                                <tr class="hover:bg-gray-100">
+                                    <td class="border p-2">{{ loop.index }}</td>
+                                    <td class="border p-2">{{ stop.station }}</td>
+                                    <td class="border p-2">{{ stop.distance }}</td>
+                                    <td class="border p-2">
+                                        <span>Sch: {{ stop.scheduled_eta }}</span>
+                                        {% if stop.delayMin and stop.delayMin > 0 %}
+                                            <br><span class="text-red-500 font-semibold">Exp: {{ stop.expected_eta }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="border p-2">{{ stop.etd }}</td>
+                                    <td class="border p-2 {% if stop.delayMin and stop.delayMin > 0 %}text-red-500 font-semibold{% endif %}">{{ stop.delayText }}</td>
+                                    <td class="border p-2">{{ stop.platform }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        {% endif %}
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/awesomplete/1.1.5/awesomplete.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchInput = document.getElementById("train-search");
+            const hiddenInput = document.getElementById("train-number-hidden");
+
+            const awesomplete = new Awesomplete(searchInput, {
+                minChars: 2, // Start searching after 2 characters
+                maxItems: 10,
+                autoFirst: true, // Automatically highlight the first suggestion
+                // We use a custom filter because we fetch data from a server
+                filter: function(text, input) {
+                    return true;
+                },
+                // Format the data for display in the dropdown
+                data: function(item, input) {
+                    return {
+                        label: `${item.train_name} (${item.train_number})`,
+                        value: item.train_number
+                    };
+                }
+            });
+
+            // Fetch suggestions from our Flask server
+            searchInput.addEventListener('input', async function() {
+                const term = this.value;
+                // If user types a 5-digit number, update the hidden input directly
+                if (/^\d{5}$/.test(term)) {
+                    hiddenInput.value = term;
+                }
+
+                if (term.length < 2) {
+                    awesomplete.list = []; // Clear suggestions if input is too short
+                    return;
+                };
+
+                const response = await fetch(`/search?term=${encodeURIComponent(term)}`);
+                const suggestions = await response.json();
+                awesomplete.list = suggestions; // Update the suggestion list
+            });
+
+            // When a suggestion is selected, update the inputs
+            searchInput.addEventListener('awesomplete-selectcomplete', function(event) {
+                // event.text contains the {label, value} object we created
+                const selectedTrain = event.text;
+                searchInput.value = selectedTrain.label; // Show full name in the box for clarity
+                hiddenInput.value = selectedTrain.value; // Set the train number for the form to submit
+            });
+        });
+    </script>
+
+    {% if train_data %}
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const trainData = {{ train_data | tojson }};
+            if (!trainData) return;
+
+            const fullRoute = trainData.fullRoute;
+            const currentStatus = trainData.currentStatus;
+            const nextStopName = (trainData.nextStop.stationName || "").trim();
+            const routeListDiagram = document.getElementById('route-list-diagram');
+
+            if (!routeListDiagram || !fullRoute) return;
+
+            let nextStopIndex = -1;
+            if (nextStopName && nextStopName !== 'N/A') {
+                nextStopIndex = fullRoute.findIndex(s => s.station.trim() === nextStopName);
+            } else if ((currentStatus.statusMessage || "").toLowerCase().includes('arrived')) {
+                nextStopIndex = fullRoute.length;
+            }
+
+            const completedIndex = nextStopIndex > 0 ? nextStopIndex - 1 : (nextStopIndex === -1 ? -1 : fullRoute.length -1);
+
+            for (let i = 0; i <= completedIndex; i++) {
+                document.getElementById(`diagram-station-${i}`)?.classList.add('completed');
+            }
+
+            if (nextStopIndex !== -1 && nextStopIndex < fullRoute.length) {
+                document.getElementById(`diagram-station-${nextStopIndex}`)?.classList.add('next-stop');
+            }
+
+            if (completedIndex > -1 && completedIndex < fullRoute.length - 1) {
+                const lastStationElement = document.getElementById(`diagram-station-${completedIndex}`);
+                const nextStationElement = document.getElementById(`diagram-station-${nextStopIndex}`);
+
+                if(lastStationElement && nextStationElement) {
+                    const lastPos = lastStationElement.offsetTop + lastStationElement.offsetHeight / 2;
+                    const nextPos = nextStationElement.offsetTop + nextStationElement.offsetHeight / 2;
+
+                    const trainEmoji = document.createElement('div');
+                    trainEmoji.id = 'train-emoji';
+                    trainEmoji.textContent = '🚂';
+                    trainEmoji.style.top = `${(lastPos + nextPos) / 2}px`;
+                    routeListDiagram.appendChild(trainEmoji);
+                }
+            } else if (nextStopIndex >= fullRoute.length) {
+                const lastStationElement = document.getElementById(`diagram-station-${fullRoute.length - 1}`);
+                if(lastStationElement) {
+                    document.querySelectorAll('.route-station').forEach(el => el.classList.add('completed'));
+                    const trainEmoji = document.createElement('div');
+                    trainEmoji.id = 'train-emoji';
+                    trainEmoji.textContent = '✅';
+                    trainEmoji.style.top = `${lastStationElement.offsetTop + lastStationElement.offsetHeight / 2}px`;
+                    routeListDiagram.appendChild(trainEmoji);
+                }
+            }
+        });
+    </script>
+    {% endif %}
+
+</body>
+</html>
