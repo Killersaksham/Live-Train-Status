@@ -188,7 +188,13 @@ def index():
                            train_data=train_data,
                            error_message=error_message,
                            selected_day=selected_day)
+# ✅ Route to serve files from public/ (like bg.png)
+from flask import send_from_directory
 
+@app.route('/public/<path:filename>')
+def serve_public(filename):
+    return send_from_directory('public', filename)
+    
 
 if __name__ == "__main__":
     app.run(debug=True)
